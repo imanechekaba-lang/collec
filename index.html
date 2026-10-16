@@ -427,6 +427,25 @@ pre.sql{background:var(--s2);border:1px solid var(--line);border-radius:12px;pad
 .tlmini div{display:flex;gap:3px;height:16px}
 .tlmini i{width:16px;border-radius:3px}
 .tlmini span{flex:1;background:var(--s2);border-radius:3px}
+.tabs a span{margin-right:5px}
+.ccard{flex:none;width:150px}
+.ccard .card{width:100%}
+@media (max-width:820px){.ccard{width:128px}}
+.ccard p{font-size:12.5px;color:var(--mu);margin:4px 0 0;line-height:1.35;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.lvl{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--s3);color:var(--vi2);margin-top:6px}
+.row-h:has(h3:empty){margin-bottom:0}
+@media (max-width:420px){.bottom a{font-size:10px}}
+.ftabbar{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;margin-top:4px}
+.ftabbar::-webkit-scrollbar{display:none}
+.ftabbar button{padding:11px 14px;color:var(--mu);font-weight:700;border-bottom:2px solid transparent;white-space:nowrap;margin-bottom:-1px}
+.ftabbar button.on{color:var(--tx);border-bottom-color:var(--vi)}
+.ftabbar b{font-size:12px;background:var(--s3);border-radius:999px;padding:1px 8px;margin-left:7px;color:var(--mu)}
+.ftabbar button.on b{background:var(--vi);color:#fff}
+.grp{margin-top:6px}
+.gh{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:14px 0 8px;font:800 19px var(--disp);letter-spacing:-.01em}
+.gh b{font:700 12px var(--body);background:var(--s3);border-radius:999px;padding:2px 9px;color:var(--mu)}
+.gchev{color:var(--mu);width:14px;font-size:14px}
+.lmove button:disabled{opacity:.25;cursor:default}
 </style>
 </head>
 <body>
@@ -507,7 +526,7 @@ let saveTimer;
 function persist(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){toast("Mémoire du navigateur pleine")}}
 function save(){S.t=Date.now();persist();clearTimeout(saveTimer);saveTimer=setTimeout(push,1200)}
 function ensure(k){
-  if(!S.items[k]){const w=W[k];if(!w)return null;S.items[k]={k,t:w.t,y:w.y||"",c:w.c||"",type:w.type,img:w.img||"",g:w.g||"",status:null,rating:0,start:"",end:"",p1:"",p2:"",review:"",quotes:[],cover:null,added:Date.now()};W[k]=S.items[k]}
+  if(!S.items[k]){const w=W[k];if(!w)return null;S.items[k]={k,t:w.t,y:w.y||"",c:w.c||"",type:w.type,img:w.img||"",g:w.g||"",status:null,rating:0,start:"",end:"",p1:"",p2:"",review:"",quotes:[],cover:null,added:Date.now()};if(w.cult)S.items[k].cult=1;W[k]=S.items[k]}
   return S.items[k];
 }
 const folder=id=>S.folders.find(f=>f.id===id);
@@ -775,6 +794,7 @@ async function fillRow(el){
   try{
     const list=(await cached("row:"+id,6,def.fn)).map(w=>reg(w));
     if(!list.length){strip.innerHTML=`<p class="rowmsg">Rien pour l’instant ici.</p>`;return}
+    if(def.cult){list.forEach(w=>{w.cult=1;if(S.items[w.k])S.items[w.k].cult=1});strip.innerHTML=list.map((w,i)=>ccard(w,def.cult[i])).join("")||`<p class="rowmsg">Rien à ce niveau dans ce thème.</p>`;return}
     strip.innerHTML=list.map((w,i)=>card(w,el.dataset.rank?i+1:0)).join("");
   }catch(e){console.warn(id,e);strip.innerHTML=`<p class="rowmsg">Impossible de charger cette ligne. <button class="link" data-act="retryrow">Réessayer</button></p>`}
 }
@@ -790,7 +810,7 @@ const ministars=r=>r?`<span class="ministars" aria-label="${r} sur 5">${"★".re
 const keyHint=need=>`<div class="hint">${need==="tmdb"?"Pour voir les films et les séries, ajoute ta clé <b>TMDB</b>":"Pour voir les jeux vidéo, ajoute ta clé <b>RAWG</b>"} dans les <a class="link" href="#/reglages">Réglages</a>.</div>`;
 
 /* ---------- routing ---------- */
-const NAV=[["home","Accueil","⌂"],["top","Top","★"],["folders","Dossiers","▤"],["tiers","Tier lists","☰"],["pour-toi","Pour toi","✦"]];
+const NAV=[["home","Accueil","⌂"],["top","Top","★"],["culture","Culture","✎"],["folders","Dossiers","▤"],["tiers","Tiers","☰"],["pour-toi","Pour toi","✦"]];
 function route(){const h=location.hash.replace(/^#\/?/,"");const [n,...r]=h.split("/");return [n||"home",decodeURIComponent(r.join("/"))]}
 function go(n,a){location.hash="#/"+n+(a!=null?"/"+enc(a):"")}
 function navHTML(cur){const map={folder:"folders",tier:"tiers"};return NAV.map(([n,l,i])=>`<a href="#/${n==="home"?"":n}" class="${(map[cur]||cur)===n?"on":""}"><span aria-hidden="true">${i}</span>${l}</a>`).join("")}
@@ -800,7 +820,7 @@ function render(){
   $("#icstats").classList.toggle("on",n==="stats");$("#icset").classList.toggle("on",n==="reglages");
   if(n!=="journal")$("#bar").innerHTML="";
   const m=$("#main"),r=n+"/"+a;
-  const V={top:vTop,folders:vFolders,folder:vFolder,item:vItem,stats:vStats,"pour-toi":vForYou,search:vSearch,reglages:vSettings,journal:vJournal,tiers:vTiers,tier:vTier};
+  const V={top:vTop,folders:vFolders,folder:vFolder,item:vItem,stats:vStats,"pour-toi":vForYou,search:vSearch,reglages:vSettings,culture:vCulture,journal:vJournal,tiers:vTiers,tier:vTier};
   m.innerHTML=(V[n]||vHome)(a);
   observeRows();
   if(n==="item")afterItem(a);if(n==="search")afterSearch(a);if(n==="journal")afterJournal(a);if(n==="tier")tierBar();
@@ -906,24 +926,37 @@ async function afterItem(k){
 function vFolders(){
   return `<div class="page-h"><h1>Mes dossiers</h1><button class="btn" data-act="newfolder">Nouveau dossier</button></div><div class="fgrid">${S.folders.map(f=>{const n=f.keys.filter(k=>S.items[k]).length;return `<a class="ftile" href="#/folder/${enc(f.id)}">${folderCover(f)}<b>${esc(f.name)}</b><span>${n} œuvre${n>1?"s":""}, ${catLabel(f.cat)}</span></a>`}).join("")}<button class="ftile new" data-act="newfolder"><div class="fcov">+</div><b>Créer un dossier</b></button></div>`;
 }
-let fFilter="all";
-function vFolder(id){
-  const f=folder(id);if(!f)return `<div class="page-h"><h1>Dossier introuvable</h1></div><a class="btn" href="#/folders">Voir mes dossiers</a>`;
-  let list=f.keys.filter(k=>S.items[k]).map((k,i)=>({k,i,it:S.items[k]}));
-  const total=list.length,doneN=list.filter(x=>x.it.status==="done").length;
-  if(fFilter!=="all")list=list.filter(x=>(x.it.status||"none")===fFilter);
-  const s=f.sort||"manual";
+let fFilter="all",fOpen=null;const fCollapsed=new Set();
+const GROUPS=["doing","todo","none","done","drop"];
+function groupLabel(g,cat){const T=TYPES[cat];const pl=x=>x.endsWith("s")?x:x+"s";
+  if(g==="doing")return"En cours";if(g==="todo")return T?T.todo:"À voir / à lire";if(g==="none")return"Pas encore classés";
+  if(g==="done")return T?pl(T.done.replace(/e$/,"")):"Terminés";return"Abandonnés"}
+function sortList(list,s){
   if(s==="rating")list.sort((a,b)=>(b.it.rating||0)-(a.it.rating||0));
   else if(s==="date")list.sort((a,b)=>(b.it.end||"").localeCompare(a.it.end||""));
   else if(s==="title")list.sort((a,b)=>a.it.t.localeCompare(b.it.t,"fr"));
   else if(s==="added")list.sort((a,b)=>(b.it.added||0)-(a.it.added||0));
-  const manual=s==="manual"&&fFilter==="all";
-  const fl=[["all","Tout"],["todo","À faire"],["doing","En cours"],["done","Terminé"],["drop","Abandonné"]];
+  return list;
+}
+function lrowHTML(f,x,n,manual,prevK,nextK){const it=x.it,done=it.status==="done";
+  return `<div class="lrow">${manual?`<span class="lpos">${n+1}</span>`:""}<button class="lchk ${done?"on":""}" data-act="toggledone" data-k="${esc(x.k)}" aria-label="${done?"Marquer comme pas fini":"Marquer comme fini"}">✓</button><a class="lmain" href="#/item/${enc(x.k)}">${coverHTML(it)}<div><b>${esc(it.t)}</b><span>${esc([TYPES[it.type].l,it.y].filter(Boolean).join(", "))}</span>${it.status?`<span class="st">${statLabel(it.status,it.type)}${done&&it.end?" le "+fmtDate(it.end):""}</span>`:""}</div></a>${ministars(it.rating)}${manual?`<div class="lmove"><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-o="${esc(prevK||"")}" ${prevK?"":"disabled"} aria-label="Monter">↑</button><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-o="${esc(nextK||"")}" ${nextK?"":"disabled"} aria-label="Descendre">↓</button></div>`:""}<button class="lx" data-act="rmfrom" data-f="${esc(f.id)}" data-k="${esc(x.k)}" aria-label="Retirer du dossier">×</button></div>`}
+function listHTML(f,list,manual){return `<div class="list">${list.map((x,n)=>lrowHTML(f,x,n,manual,list[n-1]&&list[n-1].k,list[n+1]&&list[n+1].k)).join("")}</div>`}
+function vFolder(id){
+  const f=folder(id);if(!f)return `<div class="page-h"><h1>Dossier introuvable</h1></div><a class="btn" href="#/folders">Voir mes dossiers</a>`;
+  if(fOpen!==id){fOpen=id;fFilter="all"}
+  const all=f.keys.filter(k=>S.items[k]).map((k,i)=>({k,i,it:S.items[k]}));
+  const by={};GROUPS.forEach(g=>by[g]=all.filter(x=>(x.it.status||"none")===g));
+  const total=all.length,doneN=by.done.length,s=f.sort||"manual",manual=s==="manual";
+  const tabs=[["all","Tout",total],...GROUPS.map(g=>[g,groupLabel(g,f.cat),by[g].length]).filter(([g,l,n])=>n||g==="doing"||g==="todo"||g==="done")];
+  if(!tabs.find(t=>t[0]===fFilter))fFilter="all";
+  let body;
+  if(!total)body=`<div class="empty">Dossier vide. Cherche une œuvre ou appuie longuement sur une couverture pour l’ajouter ici.</div>`;
+  else if(fFilter==="all")body=GROUPS.filter(g=>by[g].length).map(g=>{const c=fCollapsed.has(f.id+g);return `<section class="grp"><button class="gh" data-act="fcol" data-g="${f.id+g}" aria-expanded="${!c}"><span class="gchev">${c?"▸":"▾"}</span>${esc(groupLabel(g,f.cat))}<b>${by[g].length}</b></button>${c?"":listHTML(f,sortList(by[g],s),manual)}</section>`}).join("");
+  else body=by[fFilter].length?listHTML(f,sortList(by[fFilter],s),manual):`<div class="empty">Rien dans « ${esc(groupLabel(fFilter,f.cat))} » pour l’instant.</div>`;
   return `<div class="fhead">${folderCover(f)}<div><h1>${esc(f.name)}</h1>${f.desc?`<p>${esc(f.desc)}</p>`:""}<p class="fine">${total} œuvre${total>1?"s":""}, dont ${doneN} terminée${doneN>1?"s":""}</p><div class="acts"><button class="btn sm ghost" data-act="editfolder" data-id="${esc(f.id)}">Modifier</button>${f.id!=="fav"&&f.id!=="wish"?`<button class="btn sm danger" data-act="delfolder" data-id="${esc(f.id)}">Supprimer</button>`:""}</div></div></div>
-  <div class="tools"><div class="chips">${fl.map(([v,l])=>`<button class="chip ${fFilter===v?"on":""}" data-act="ffilter" data-v="${v}">${l}</button>`).join("")}</div>
-  <select data-sort="${esc(f.id)}" aria-label="Trier">${[["manual","Mon ordre"],["rating","Mieux notés"],["date","Terminés récemment"],["added","Ajoutés récemment"],["title","Titre A-Z"]].map(([v,l])=>`<option value="${v}" ${s===v?"selected":""}>${l}</option>`).join("")}</select></div>
-  ${list.length?`<div class="list">${list.map((x,n)=>{const it=x.it,done=it.status==="done";return `<div class="lrow">${manual?`<span class="lpos">${n+1}</span>`:""}<button class="lchk ${done?"on":""}" data-act="toggledone" data-k="${esc(x.k)}" aria-label="${done?"Marquer comme pas fini":"Marquer comme fini"}">✓</button><a class="lmain" href="#/item/${enc(x.k)}">${coverHTML(it)}<div><b>${esc(it.t)}</b><span>${esc([TYPES[it.type].l,it.y].filter(Boolean).join(", "))}</span>${it.status?`<span class="st">${statLabel(it.status,it.type)}${done&&it.end?" le "+fmtDate(it.end):""}</span>`:""}</div></a>${ministars(it.rating)}${manual?`<div class="lmove"><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-d="-1" aria-label="Monter">↑</button><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-d="1" aria-label="Descendre">↓</button></div>`:""}<button class="lx" data-act="rmfrom" data-f="${esc(f.id)}" data-k="${esc(x.k)}" aria-label="Retirer du dossier">×</button></div>`}).join("")}</div>`
-  :`<div class="empty">${total?"Rien dans ce filtre.":"Dossier vide. Cherche une œuvre ou appuie longuement sur une couverture pour l’ajouter ici."}</div>`}`;
+  <div class="ftabbar" role="tablist">${tabs.map(([v,l,n])=>`<button role="tab" aria-selected="${fFilter===v}" class="${fFilter===v?"on":""}" data-act="ffilter" data-v="${v}">${esc(l)}<b>${n}</b></button>`).join("")}</div>
+  <div class="tools" style="justify-content:flex-end"><select data-sort="${esc(f.id)}" aria-label="Trier">${[["manual","Mon ordre"],["rating","Mieux notés"],["date","Terminés récemment"],["added","Ajoutés récemment"],["title","Titre A-Z"]].map(([v,l])=>`<option value="${v}" ${s===v?"selected":""}>${l}</option>`).join("")}</select></div>
+  ${body}`;
 }
 
 /* ---------- pour toi ---------- */
@@ -964,7 +997,7 @@ function vStats(){
   const best=all.filter(i=>i.rating>=4).sort((a,b)=>b.rating-a.rating).slice(0,14);
   return `<div class="page-h"><h1>Mes stats</h1></div>
   <section class="panel"><h2>Objectif ${y}</h2><div class="goal"><i style="width:${pct}%"></i></div><p class="fine" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0">${doneY.length} terminé${doneY.length>1?"s":""} sur <input type="number" min="1" class="inp" style="width:80px;padding:6px 10px" data-goal value="${S.goal}" aria-label="Objectif de l’année"> cette année</p></section>
-  <div class="kpis"><div class="kpi"><b>${done.length}</b><span>terminés au total</span></div><div class="kpi"><b>${all.filter(i=>i.status==="doing").length}</b><span>en cours</span></div><div class="kpi"><b>${all.filter(i=>i.status==="todo").length}</b><span>dans la pile à faire</span></div><div class="kpi"><b>${avg}</b><span>note moyenne</span></div></div>
+  <div class="kpis"><div class="kpi"><b>${done.length}</b><span>terminés au total</span></div><div class="kpi"><b>${all.filter(i=>i.status==="doing").length}</b><span>en cours</span></div><div class="kpi"><b>${all.filter(i=>i.status==="todo").length}</b><span>dans la pile à faire</span></div><div class="kpi"><b>${avg}</b><span>note moyenne</span></div><div class="kpi"><b>${all.filter(i=>i.cult&&i.status==="done").length}</b><span>œuvres culture G terminées</span></div></div>
   <div class="two"><section class="panel"><h2>Par type</h2><p>Ce que t’as terminé.</p>${Object.keys(byType).length?`<div class="bars">${Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<div class="bar"><span>${TYPES[t].l}</span><div><i style="width:${n/maxT*100}%"></i></div><b>${n}</b></div>`).join("")}</div>`:`<p class="fine">Marque des œuvres comme terminées pour voir ça.</p>`}</section>
   <section class="panel"><h2>Genres préférés</h2><p>D’après ce que t’as fini.</p>${topG.length?`<div class="bars">${topG.map(([g,n])=>`<div class="bar"><span>${esc(g)}</span><div><i style="width:${n/maxG*100}%;background:var(--pk)"></i></div><b>${n}</b></div>`).join("")}</div>`:`<p class="fine">Pas encore assez de données.</p>`}</section></div>
   <section class="panel"><h2>Mois par mois</h2><p>Œuvres terminées en ${y}.</p><div class="months">${months.map((n,i)=>`<div><span>${n||""}</span><i style="height:${n/maxM*100}%"></i>${"JFMAMJJASOND"[i]}</div>`).join("")}</div></section>
@@ -1286,6 +1319,154 @@ function openTierRow(id,rid){
 function openTierPicker(k){
   modal(`<h2>Ajouter à une tier list</h2>${S.tiers.map(t=>`<button class="sbtn" data-act="tpick" data-id="${esc(t.id)}" data-k="${esc(k)}" data-close="1"><em>☰</em>${esc(t.name)}${tierFind(t,k)?`<span class="on">✓</span>`:""}</button>`).join("")}<button class="sbtn" data-act="newtier" data-k="${esc(k)}"><em>＋</em>Nouvelle tier list</button><div class="mrow"><button class="btn" data-act="close">OK</button></div>`);
 }
+/* ---------- Culture G ---------- */
+const CT=(s)=>s.trim().split("\n").map(l=>{const [t,a,ty,lv,why,q]=l.split("|").map(x=>(x||"").trim());return{t,a,ty,lv:+lv,why,q}});
+const CULTURE=[
+["histoire","Histoire",CT(`
+Sapiens|Yuval Noah Harari|L|1|L’histoire de l’humanité en un seul livre, de la préhistoire à aujourd’hui.
+Le Journal d’Anne Frank|Anne Frank|L|1|Le quotidien d’une ado juive cachée pendant la Seconde Guerre mondiale.
+Apocalypse : La Seconde Guerre mondiale|Isabelle Clarke, Daniel Costelle|DS|1|La guerre racontée avec des archives colorisées, ultra prenant.|Apocalypse la seconde guerre mondiale
+Chernobyl|Craig Mazin|S|1|La catastrophe nucléaire de 1986 racontée avec une grande précision.
+La Liste de Schindler|Steven Spielberg|F|1|Le film de référence sur la Shoah.
+Maus|Art Spiegelman|B|1|La Shoah racontée en BD par le fils d’un survivant.
+Persepolis|Marjane Satrapi|B|1|La révolution iranienne vue à travers les yeux d’une enfant.
+Si c’est un homme|Primo Levi|L|2|Le témoignage d’un rescapé d’Auschwitz, un texte essentiel.
+Les Origines du totalitarisme|Hannah Arendt|L|2|Comprendre comment naissent les régimes totalitaires.`)],
+["societe","Société et sociologie",CT(`
+En finir avec Eddy Bellegueule|Édouard Louis|L|1|Grandir pauvre et différent dans un village du Nord.
+Nous sommes tous des féministes|Chimamanda Ngozi Adichie|L|1|Un mini-essai clair et percutant sur l’égalité.
+Americanah|Chimamanda Ngozi Adichie|L|1|Immigration, racisme et identité entre le Nigeria et les États-Unis.
+La Haine|Mathieu Kassovitz|F|1|Le film culte sur la banlieue et les tensions avec la police.
+Les Misérables|Ladj Ly|F|1|Montfermeil aujourd’hui, en écho à Victor Hugo.|Les Misérables 2019
+13th|Ava DuVernay|D|1|De l’esclavage à la prison de masse aux États-Unis.
+Retour à Reims|Didier Eribon|L|2|Un sociologue revient sur le milieu ouvrier dont il vient.
+Les Héritiers|Pierre Bourdieu, Jean-Claude Passeron|L|2|Pourquoi l’école reproduit les inégalités sociales.
+Le Deuxième Sexe|Simone de Beauvoir|L|2|Le texte fondateur du féminisme moderne.`)],
+["politique","Politique",CT(`
+La Ferme des animaux|George Orwell|L|1|Une fable courte sur la façon dont les révolutions tournent mal.
+1984|George Orwell|L|1|Surveillance et propagande : la base pour comprendre les dictatures.
+Baron Noir|Éric Benzekri, Jean-Baptiste Delafon|S|1|Les coulisses de la politique française, très réaliste.
+House of Cards|Beau Willimon|S|1|Manipulation et soif de pouvoir à Washington.
+Le Dessous des cartes|Jean-Christophe Victor|DS|1|La géopolitique expliquée simplement avec des cartes.
+Le Prince|Nicolas Machiavel|L|2|Le manuel du pouvoir, toujours cité 500 ans après.
+Le Contrat social|Jean-Jacques Rousseau|L|2|D’où vient l’idée que le pouvoir appartient au peuple.
+De la démocratie en Amérique|Alexis de Tocqueville|L|2|Les forces et les dangers de la démocratie.`)],
+["psycho","Psychologie",CT(`
+Vice-versa|Pete Docter|F|1|Les émotions expliquées de façon étonnamment juste.|Vice-versa 2015
+Mindhunter|Joe Penhall|S|1|La naissance du profilage criminel au FBI, tirée d’une histoire vraie.
+L’Homme qui prenait sa femme pour un chapeau|Oliver Sacks|L|1|Des cas neurologiques fascinants racontés comme des histoires.
+Petit traité de manipulation à l’usage des honnêtes gens|Robert-Vincent Joule, Jean-Léon Beauvois|L|1|Les expériences de psycho sociale qui expliquent nos choix.
+Découvrir un sens à sa vie|Viktor E. Frankl|L|1|Un psychiatre rescapé des camps parle du sens de la vie.
+The Stanford Prison Experiment|Kyle Patrick Alvarez|F|1|La célèbre expérience sur le pouvoir et l’obéissance.
+Système 1 / Système 2|Daniel Kahneman|L|2|Comment ton cerveau prend des décisions, et pourquoi il se trompe.`)],
+["sciences","Sciences",CT(`
+Cosmos : Une odyssée à travers l’univers|Neil deGrasse Tyson|DS|1|L’univers et l’histoire des sciences, hyper accessible.|Cosmos 2014
+Les Figures de l’ombre|Theodore Melfi|F|1|Les mathématiciennes noires qui ont envoyé la NASA dans l’espace.|Hidden Figures
+Interstellar|Christopher Nolan|F|1|La relativité au cinéma, avec un prix Nobel comme conseiller.
+L’Odyssée de l’espèce|Jacques Malaterre|D|1|La préhistoire racontée en docu-fiction.
+Une brève histoire du temps|Stephen Hawking|L|2|L’univers, le temps et les trous noirs par un génie.
+L’Origine des espèces|Charles Darwin|L|2|Le livre qui a expliqué l’évolution.
+Le Gène égoïste|Richard Dawkins|L|2|L’évolution vue du côté des gènes.`)],
+["nature","Nature et animaux",CT(`
+Planète Terre|Alastair Fothergill|DS|1|La série nature de référence de la BBC.|Planet Earth
+Notre planète|Alastair Fothergill|DS|1|La beauté du vivant et l’impact du changement climatique.|Our Planet
+La Planète bleue|Alastair Fothergill|DS|1|Les océans comme tu les as jamais vus.|The Blue Planet
+La Marche de l’empereur|Luc Jacquet|D|1|Les manchots empereurs, docu français oscarisé.
+La Sagesse de la pieuvre|Pippa Ehrlich, James Reed|D|1|L’amitié entre un plongeur et une pieuvre, bouleversant.|My Octopus Teacher
+Microcosmos|Claude Nuridsany, Marie Pérennou|D|1|Le monde des insectes filmé comme jamais.|Microcosmos 1996
+Océans|Jacques Perrin|D|1|Un grand voyage sous les mers.|Océans 2009
+La Vie secrète des arbres|Peter Wohlleben|L|1|Les arbres communiquent et s’entraident, fascinant.
+Printemps silencieux|Rachel Carson|L|2|Le livre qui a lancé l’écologie moderne.`)],
+["mythes","Mythologies",CT(`
+Percy Jackson et le Voleur de foudre|Rick Riordan|L|1|Les dieux grecs dans le monde moderne, la porte d’entrée parfaite.
+L’Univers, les dieux, les hommes|Jean-Pierre Vernant|L|1|La mythologie grecque racontée simplement.
+La Mythologie viking|Neil Gaiman|L|1|Odin, Thor et Loki racontés par Neil Gaiman.|Norse Mythology Neil Gaiman
+Les Mille et Une Nuits|Anonyme|L|1|Aladdin, Sinbad et Shéhérazade, les grands contes d’Orient.
+Princesse Mononoké|Hayao Miyazaki|F|1|Les esprits de la forêt du folklore japonais.
+Blood of Zeus|Charley et Vlas Parlapanides|S|1|La mythologie grecque en série animée.
+L’Iliade|Homère|L|2|La guerre de Troie, aux origines de la littérature.
+L’Odyssée|Homère|L|2|Le long retour d’Ulysse, la base de tant d’histoires.
+L’Épopée de Gilgamesh|Anonyme|L|2|Le plus vieux récit connu de l’humanité.
+Les Métamorphoses|Ovide|L|2|Les grands mythes de transformation de l’Antiquité.`)],
+["classiques","Grands classiques",CT(`
+Le Petit Prince|Antoine de Saint-Exupéry|L|1|Court, poétique, plein de leçons de vie.
+Le Comte de Monte-Cristo|Alexandre Dumas|L|1|La plus grande histoire de vengeance, impossible à lâcher.
+L’Étranger|Albert Camus|L|1|Court et marquant, sur l’absurdité de la vie.
+Orgueil et Préjugés|Jane Austen|L|1|La romance classique qui a inspiré toutes les autres.
+Bel-Ami|Guy de Maupassant|L|1|Un arriviste qui grimpe grâce aux femmes et aux journaux.
+Antigone|Jean Anouilh|L|1|Dire non au pouvoir, court et intense.
+Le Monde de Sophie|Jostein Gaarder|L|1|Toute l’histoire de la philosophie dans un roman.
+Les Misérables|Victor Hugo|L|2|Justice, misère et rédemption, le monument de la littérature française.
+Germinal|Émile Zola|L|2|La vie des mineurs et la naissance des luttes ouvrières.
+Madame Bovary|Gustave Flaubert|L|2|Les rêves déçus d’une femme qui s’ennuie.
+Crime et Châtiment|Fiodor Dostoïevski|L|2|Plongée dans la tête d’un meurtrier.
+Cent ans de solitude|Gabriel García Márquez|L|2|La saga d’une famille sur un siècle, pleine de magie.`)],
+["cinema","Cinéma culte",CT(`
+Les Temps modernes|Charlie Chaplin|F|1|Chaplin face au travail à la chaîne, drôle et engagé.
+12 Hommes en colère|Sidney Lumet|F|1|Un jury, une pièce, et tout l’art de convaincre.|12 Angry Men
+Le Voyage de Chihiro|Hayao Miyazaki|F|1|Le chef-d’œuvre de l’animation japonaise.
+La vie est belle|Roberto Benigni|F|1|L’humour face à l’horreur des camps.|La vita è bella
+Parasite|Bong Joon-ho|F|1|Riches contre pauvres, Palme d’or et Oscar du meilleur film.
+Le Fabuleux Destin d’Amélie Poulain|Jean-Pierre Jeunet|F|1|Le Paris rêvé qui a fait le tour du monde.
+Psychose|Alfred Hitchcock|F|1|Le maître du suspense et une scène de douche entrée dans l’histoire.|Psycho 1960
+Le Parrain|Francis Ford Coppola|F|1|La saga mafieuse qui a redéfini le cinéma américain.
+La Bataille d’Alger|Gillo Pontecorvo|F|2|La guerre d’Algérie filmée presque comme un documentaire.
+2001 : L’Odyssée de l’espace|Stanley Kubrick|F|2|Le film qui a révolutionné la science-fiction.
+Citizen Kane|Orson Welles|F|2|Souvent élu meilleur film de tous les temps.`)],
+["eco","Économie, business et marketing",CT(`
+La Psychologie de l’argent|Morgan Housel|L|1|Pourquoi on gère mal son argent, et comment faire mieux.
+Influence et manipulation|Robert Cialdini|L|1|Les techniques qui nous font dire oui, la base du marketing.
+Contagieux|Jonah Berger|L|1|Pourquoi certaines idées et certaines pubs deviennent virales.|Contagious Jonah Berger
+De zéro à un|Peter Thiel|L|1|Comment créer une start-up qui invente vraiment quelque chose.
+Steve Jobs|Walter Isaacson|L|1|La bio du fondateur d’Apple : vision produit et marketing.
+The Social Network|David Fincher|F|1|La création de Facebook entre business et trahisons.
+The Big Short|Adam McKay|F|1|La crise financière de 2008 expliquée avec humour.
+Inside Job|Charles Ferguson|D|1|Le docu oscarisé sur les causes de la crise de 2008.
+Mad Men|Matthew Weiner|S|1|Les agences de pub des années 60, aux origines du marketing.
+Le Positionnement|Al Ries, Jack Trout|L|2|Comment une marque prend sa place dans la tête des gens.|Positioning Ries Trout
+Le Capital au XXIe siècle|Thomas Piketty|L|2|Les inégalités de richesse sur trois siècles.`)],
+["bdm","BD et mangas qui instruisent",CT(`
+L’Arabe du futur|Riad Sattouf|B|1|Une enfance entre la France, la Libye et la Syrie.
+Le Monde sans fin|Jean-Marc Jancovici, Christophe Blain|B|1|Climat et énergie expliqués en BD, un best-seller.
+Les Cahiers d’Esther|Riad Sattouf|B|1|La vie d’une ado racontée chaque semaine, un vrai miroir de la société.
+Les Ignorants|Étienne Davodeau|B|1|Un auteur de BD et un vigneron s’apprennent leur métier.
+Cellules au travail !|Akane Shimizu|M|1|Le corps humain expliqué en manga.|Cells at Work!
+Dr. Stone|Riichiro Inagaki, Boichi|M|1|Reconstruire la civilisation grâce à la science.|Dr. STONE
+Thermae Romae|Mari Yamazaki|M|1|La Rome antique et le Japon à travers les bains, drôle et instructif.
+Gen d’Hiroshima|Keiji Nakazawa|M|1|Hiroshima vu par un enfant survivant.|Barefoot Gen
+Vinland Saga|Makoto Yukimura|M|2|Les Vikings et une vraie réflexion sur la violence.`)]
+];
+const CTYPE={L:"livre",B:"bd",M:"manga",F:"film",D:"doc",S:"serie",DS:"doc"};
+async function resolveCult(c){
+  const type=CTYPE[c.ty];
+  if(c.ty==="L"||c.ty==="B")return resolveBook([c.q||c.t,c.a,type]).then(w=>{w.t=c.t;return w});
+  const w=await cached("rc:"+slug(c.t+"|"+c.q+"|"+c.ty),24*30,async()=>{
+    try{
+      if(c.ty==="M"){const r=(await aniList({type:"MANGA",q:c.q||c.t,s:["SEARCH_MATCH"]}))[0];if(r)return{...r,t:c.t}}
+      else if(cfg("TMDB_KEY")){const kind=c.ty==="S"||c.ty==="DS"?"tv":"movie";const q=(c.q||c.t).replace(/ (19|20)\d\d$/,"");const yr=((c.q||"").match(/(19|20)\d\d$/)||[])[0];
+        const j=await tmdb(`/search/${kind}`,{query:q,...(yr?(kind==="tv"?{first_air_date_year:yr}:{year:yr}):{})});const x=(j.results||[]).find(r=>r.poster_path);if(x)return fromTmdb(x,kind)}
+    }catch(e){}
+    return null;
+  });
+  return reg(w?{...w}:{k:"man:"+type+":"+slug(c.t),t:c.t,c:c.a,type,img:"",g:"",src:"man"});
+}
+async function resolveCultList(items){const out=[];for(let i=0;i<items.length;i+=4)out.push(...await Promise.all(items.slice(i,i+4).map(resolveCult)));return out}
+CULTURE.forEach(([id,l,items])=>{ROWFN["c-"+id]={fn:()=>resolveCultList(items),need:"",cult:items}});
+let cultLvl=0,cultTheme="all";
+function ccard(w,c){if(c&&cultLvl&&c.lv!==cultLvl)return"";return `<div class="ccard">${card(w)}${c?`<span class="lvl">${c.lv===1?"Facile d’accès":"Plus exigeant"}</span><p>${esc(c.why)}</p>`:""}</div>`}
+const ALLCULT=CULTURE.flatMap(([id,l,items])=>items.map(c=>({...c,theme:l})));
+function cultDone(){const m=today().slice(0,7);const all=Object.values(S.items).filter(i=>i.cult&&i.status==="done");return{month:all.filter(i=>(i.end||"").startsWith(m)).length,total:all.length}}
+function vCulture(){
+  const goal=S.cgoal||2,d=cultDone(),pct=Math.min(100,Math.round(d.month/goal*100));
+  const day=Math.floor(Date.now()/864e5);const pickI=(day*7919)%ALLCULT.length;const pick=ALLCULT[pickI];
+  const mois=new Date().toLocaleDateString("fr-FR",{month:"long"});
+  return `<div class="page-h"><h1>Culture G</h1></div><p class="fine" style="margin-top:-6px;max-width:60ch">Des œuvres pour apprendre des trucs sans t’ennuyer, avec à chaque fois pourquoi ça vaut le coup.</p>
+  <div class="two"><section class="panel"><h2>Défi de ${mois}</h2><p>${d.month} sur ${goal} œuvre${goal>1?"s":""} culture G terminée${goal>1?"s":""} ce mois-ci.</p><div class="goal"><i style="width:${pct}%"></i></div><div class="opts">${[1,2,4].map(n=>`<button class="${goal===n?"on":""}" data-act="cgoal" data-v="${n}">${n} par mois</button>`).join("")}</div><p class="fine" style="margin:0">${d.total} au total depuis le début.</p></section>
+  <section class="panel"><h2>L’idée du jour</h2><p style="color:var(--tx);margin:8px 0 2px"><b>${esc(pick.t)}</b></p><p class="fine" style="margin:0 0 6px">${esc(pick.a)}, ${TYPES[CTYPE[pick.ty]].l.toLowerCase()}, ${esc(pick.theme.toLowerCase())}</p><p>${esc(pick.why)}</p><button class="btn sm" data-act="cpick" data-i="${pickI}">Je découvre</button></section></div>
+  <nav class="chips" aria-label="Thèmes"><button class="chip ${cultTheme==="all"?"on":""}" data-act="ctheme" data-v="all">Tous les thèmes</button>${CULTURE.map(([id,l])=>`<button class="chip ${cultTheme===id?"on":""}" data-act="ctheme" data-v="${id}">${esc(l)}</button>`).join("")}</nav>
+  <div class="opts" style="margin-top:0">${[[0,"Tous les niveaux"],[1,"Facile d’accès"],[2,"Plus exigeant"]].map(([v,l])=>`<button class="${cultLvl===v?"on":""}" data-act="clvl" data-v="${v}">${l}</button>`).join("")}</div>
+  ${CULTURE.filter(([id])=>cultTheme==="all"||cultTheme===id).map(([id,l])=>`<h2 class="sec" style="font-size:26px">${esc(l)}</h2>${lazyRow("c-"+id,"").replace('<h3></h3>',"")}`).join("")}`;
+}
 /* ---------- modales générales ---------- */
 function openSheet(k){
   const w=W[k];if(!w)return;const it=S.items[k],T=TYPES[w.type];
@@ -1357,7 +1538,8 @@ const ACT={
     save();closeModal();toast(FD.id?"Dossier modifié":"Dossier créé");if(!FD.id&&!FD.addKey)go("folder",f.id);else render()},
   ffilter(el){fFilter=el.dataset.v;render()},
   toggledone(el){const it=ensure(el.dataset.k);if(it.status==="done")it.status="todo";else{it.status="done";if(!it.end)it.end=today()}save();render()},
-  mv(el){const f=folder(el.dataset.f),k=el.dataset.k,live=f.keys.filter(x=>S.items[x]);const i=live.indexOf(k),j=i+(+el.dataset.d);if(j<0||j>=live.length)return;[live[i],live[j]]=[live[j],live[i]];f.keys=live;save();render()},
+  mv(el){const f=folder(el.dataset.f),k=el.dataset.k,o=el.dataset.o;if(!o)return;const i=f.keys.indexOf(k),j=f.keys.indexOf(o);if(i<0||j<0)return;[f.keys[i],f.keys[j]]=[f.keys[j],f.keys[i]];save();render()},
+  fcol(el){const g=el.dataset.g;fCollapsed.has(g)?fCollapsed.delete(g):fCollapsed.add(g);render()},
   rmfrom(el){const f=folder(el.dataset.f);f.keys=f.keys.filter(x=>x!==el.dataset.k);save();render()},
   status(el){const it=ensure(curK()),v=el.dataset.v;it.status=it.status===v?null:v;if(it.status==="done"&&!it.end)it.end=today();if(it.status==="doing"&&!it.start)it.start=today();save();render()},
   rate(el){const it=ensure(curK()),v=+el.dataset.v;it.rating=it.rating===v?0:v;save();render()},
@@ -1421,7 +1603,11 @@ const ACT={
   trsave(el){const r=tier(el.dataset.id).rows.find(x=>x.id===el.dataset.r);r.l=$("#rl").value.trim()||r.l;save();closeModal();render()},
   trup(el){const t=tier(el.dataset.id);const i=t.rows.findIndex(x=>x.id===el.dataset.r);if(i>0){[t.rows[i-1],t.rows[i]]=[t.rows[i],t.rows[i-1]];save()}closeModal();render()},
   trdel(el){const t=tier(el.dataset.id);const r=t.rows.find(x=>x.id===el.dataset.r);t.pool.push(...r.keys);t.rows=t.rows.filter(x=>x!==r);save();closeModal();render()},
-  picktier(el){openTierPicker(el.dataset.k)}
+  picktier(el){openTierPicker(el.dataset.k)},
+  cgoal(el){S.cgoal=+el.dataset.v;save();render()},
+  ctheme(el){cultTheme=el.dataset.v;render()},
+  clvl(el){cultLvl=+el.dataset.v;render()},
+  async cpick(el){el.textContent="Je cherche…";const w=await resolveCult(ALLCULT[+el.dataset.i]);w.cult=1;go("item",w.k)}
 };
 function copy(text,msg){(navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast(msg)).catch(()=>{prompt("Copie ce texte :",text)})}
 
