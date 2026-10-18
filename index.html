@@ -460,10 +460,13 @@ pre.sql{background:var(--s2);border:1px solid var(--line);border-radius:12px;pad
 <div id="modal" hidden></div>
 <div id="bar"></div>
 <div id="toast" role="status"></div>
+<script>window.COLLEC_CONFIG=window.COLLEC_CONFIG||{};</script>
+<script src="config.js"></script>
 <script>
 /* =========================================================
-   CONFIG — tu peux coller tes clés ici, ou plus simplement
-   dans la page Réglages du site.
+   CONFIG — mets plutôt tes clés dans un fichier config.js à côté
+   de ce fichier (voir Réglages > Synchro), comme ça les mises à jour
+   du site ne les effacent pas.
    ========================================================= */
 const CONFIG={
   TMDB_KEY:"",          // films et séries (clé API TMDB)
@@ -475,7 +478,7 @@ const CONFIG={
 const LS="collec2";
 let LOCALCFG={};try{LOCALCFG=JSON.parse(localStorage.getItem(LS+"-cfg"))||{}}catch(e){}
 if(location.hash.startsWith("#cfg=")){try{const c=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(5)))));LOCALCFG={...LOCALCFG,...c};localStorage.setItem(LS+"-cfg",JSON.stringify(LOCALCFG))}catch(e){}history.replaceState(null,"",location.pathname+"#/reglages")}
-const cfg=k=>String(LOCALCFG[k]||CONFIG[k]||"").trim();
+const cfg=k=>String(LOCALCFG[k]||(window.COLLEC_CONFIG||{})[k]||CONFIG[k]||"").trim();
 
 /* ---------- types ---------- */
 const TYPES={
@@ -526,7 +529,7 @@ let saveTimer;
 function persist(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){toast("Mémoire du navigateur pleine")}}
 function save(){S.t=Date.now();persist();clearTimeout(saveTimer);saveTimer=setTimeout(push,1200)}
 function ensure(k){
-  if(!S.items[k]){const w=W[k];if(!w)return null;S.items[k]={k,t:w.t,y:w.y||"",c:w.c||"",type:w.type,img:w.img||"",g:w.g||"",status:null,rating:0,start:"",end:"",p1:"",p2:"",review:"",quotes:[],cover:null,added:Date.now()};if(w.cult)S.items[k].cult=1;W[k]=S.items[k]}
+  if(!S.items[k]){const w=W[k];if(!w)return null;if(S.del&&S.del[k])delete S.del[k];S.items[k]={k,t:w.t,y:w.y||"",c:w.c||"",type:w.type,img:w.img||"",g:w.g||"",status:null,rating:0,start:"",end:"",p1:"",p2:"",review:"",quotes:[],cover:null,added:Date.now()};if(w.cult)S.items[k].cult=1;W[k]=S.items[k]}
   return S.items[k];
 }
 const folder=id=>S.folders.find(f=>f.id===id);
@@ -544,20 +547,39 @@ async function initSB(){
   SB.auth.onAuthStateChange((ev,s)=>{const was=!!SESSION;SESSION=s;if(s&&!was)pull();if(!s)setSync("local");if(route()[0]==="reglages")render()});
   if(SESSION)pull();
 }
+let syncMsg="";
+function mergeStates(a,b){
+  const newer=(a.t||0)>=(b.t||0)?a:b,older=newer===a?b:a;
+  const out=JSON.parse(JSON.stringify(newer));
+  out.del={...(older.del||{}),...(newer.del||{})};out.delF={...(older.delF||{}),...(newer.delF||{})};out.delT={...(older.delT||{}),...(newer.delT||{})};
+  out.items=out.items||{};
+  for(const [k,v] of Object.entries(older.items||{}))if(!out.items[k])out.items[k]=v;
+  for(const [k,t] of Object.entries(out.del))if(out.items[k]&&(out.items[k].added||0)<t)delete out.items[k];
+  out.folders=out.folders||[];
+  for(const f of older.folders||[]){if(out.delF[f.id])continue;const g=out.folders.find(x=>x.id===f.id);if(!g)out.folders.push(f);else for(const k of f.keys)if(!g.keys.includes(k))g.keys.push(k)}
+  out.folders=out.folders.filter(f=>!out.delF[f.id]);
+  out.tiers=out.tiers||[];for(const t of older.tiers||[])if(!out.delT[t.id]&&!out.tiers.find(x=>x.id===t.id))out.tiers.push(t);
+  out.tiers=out.tiers.filter(t=>!out.delT[t.id]);
+  out.myStk=[...new Set([...(newer.myStk||[]),...(older.myStk||[])])];
+  return fix(out);
+}
 async function pull(){
   if(!SB||!SESSION)return;
   const {data,error}=await SB.from("collec").select("data").eq("user_id",SESSION.user.id).maybeSingle();
-  if(error){console.warn(error);setSync("err");return}
-  const rt=data&&data.data?data.data.t||0:0;
-  if(data&&rt>S.t){S=fix(data.data);for(const [k,i] of Object.entries(S.items))W[k]=i;persist();setSync("ok");render()}
-  else if(!data||S.t>rt)push();
-  else setSync("ok");
+  if(error){console.warn(error);syncMsg=error.message;setSync("err");if(route()[0]==="reglages")render();return}
+  if(!data||!data.data){syncMsg="";await push();return}
+  const remote=data.data;const merged=mergeStates(S,remote);
+  const changedLocal=JSON.stringify(merged.items)!==JSON.stringify(S.items)||JSON.stringify(merged.folders)!==JSON.stringify(S.folders)||JSON.stringify(merged.tiers)!==JSON.stringify(S.tiers);
+  const changedRemote=JSON.stringify(merged.items)!==JSON.stringify(remote.items||{})||JSON.stringify(merged.folders)!==JSON.stringify(remote.folders||[])||JSON.stringify(merged.tiers)!==JSON.stringify(remote.tiers||[]);
+  S=merged;for(const [k,i] of Object.entries(S.items))W[k]=i;persist();syncMsg="";
+  if(changedRemote){S.t=Date.now();persist();await push()}else setSync("ok");
+  if(changedLocal)render();
 }
 let pushing=false,pushAgain=false;
 async function push(){
   if(!SB||!SESSION)return;if(pushing){pushAgain=true;return}pushing=true;
   const {error}=await SB.from("collec").upsert({user_id:SESSION.user.id,data:S,updated_at:new Date().toISOString()});
-  setSync(error?"err":"ok");if(error)console.warn(error);
+  setSync(error?"err":"ok");syncMsg=error?error.message:"";if(error)console.warn(error);
   pushing=false;if(pushAgain){pushAgain=false;push()}
 }
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")pull()});
@@ -1026,8 +1048,12 @@ function vSettings(){
   else if(!SB)acc=`<p class="fine">Les codes Supabase ont l’air faux, vérifie-les puis recharge la page.</p>`;
   else if(!SESSION)acc=`<p>Connecte-toi pour retrouver tes données sur tous tes appareils.</p><div class="form"><label>Email<input class="inp" id="em" type="email" autocomplete="email"></label><label>Mot de passe<input class="inp" id="pw" type="password" autocomplete="current-password"></label></div><div class="mrow" style="justify-content:flex-start"><button class="btn" data-act="login">Me connecter</button><button class="btn ghost" data-act="signup">Créer mon compte</button></div>`;
   else acc=`<p>Connectée avec <b>${esc(SESSION.user.email)}</b>. ${syncState==="ok"?"Tout est synchronisé.":syncState==="err"?"Petit souci de synchro, réessaie.":""}</p><div class="mrow" style="justify-content:flex-start"><button class="btn ghost" data-act="syncnow">Synchroniser maintenant</button><button class="btn ghost" data-act="logout">Me déconnecter</button></div>`;
+  const st=!cfg("SUPABASE_URL")||!cfg("SUPABASE_ANON_KEY")?["err","Pas branchée : cet appareil ne connaît pas tes codes Supabase."]:!SB?["err","Les codes Supabase sont faux ou incomplets."]:!SESSION?["err","Pas connectée sur cet appareil."]:syncState==="err"?["err","Connectée, mais la synchro a échoué."]:["ok","Synchro active sur cet appareil."];
   return `<div class="page-h"><h1>Réglages</h1></div>
-  <section class="panel"><h2>Mon compte</h2>${acc}</section>
+  <section class="panel"><h2>Mon compte</h2><p style="color:${st[0]==="ok"?"var(--ok)":"#ff8fb5"};font-weight:700;margin:6px 0 12px">● ${st[1]}</p>${syncMsg?`<p class="fine" style="color:#ff8fb5">${esc(syncMsg)}</p>`:""}${acc}</section>
+  <section class="panel"><h2>Brancher tous mes appareils</h2><p>Sur iPhone et iPad, l’icône de l’écran d’accueil a sa propre mémoire. Le plus simple : mettre tes codes dans un fichier <b>config.js</b> sur GitHub, une seule fois. Tous tes appareils les auront, et les mises à jour du site ne les effaceront pas.</p>
+  <ol class="setup"><li>Sur l’appareil où tes clés sont déjà remplies (ton Mac), clique sur le bouton ci-dessous.</li><li>Sur GitHub, dans ton repo <b>collec</b> : <b>Add file</b>, puis <b>Create new file</b>. Nom du fichier : <b>config.js</b>. Colle le contenu, puis <b>Commit changes</b>.</li><li>Sur chaque appareil : ferme l’appli, rouvre-la, et connecte-toi ici avec le même compte.</li></ol>
+  <button class="btn sm" data-act="copyconfig">Copier le contenu de config.js</button>${window.COLLEC_CONFIG&&window.COLLEC_CONFIG.SUPABASE_URL?`<p class="fine" style="color:var(--ok);margin-top:10px">✓ Le fichier config.js est bien en place.</p>`:""}</section>
   <section class="panel"><h2>Mes clés</h2><p>Elles restent sur cet appareil. Pour ton autre appareil, utilise le lien de configuration plus bas.</p><div class="form">
   ${keyIn("TMDB_KEY","Clé TMDB (films et séries)","Colle ta clé d’API ici")}
   ${keyIn("RAWG_KEY","Clé RAWG (jeux vidéo, optionnel)","Optionnel")}
@@ -1529,7 +1555,7 @@ const ACT={
   pickfolder(el){openPicker(el.dataset.k)},
   togglein(el){const added=toggleIn(el.dataset.f,el.dataset.k);toast(added?"Rangé dans le dossier":"Retiré du dossier");openPicker(el.dataset.k)},
   newfolder(el){openFolderEditor(null,el.dataset.k,el.dataset.t)},editfolder(el){openFolderEditor(el.dataset.id)},
-  delfolder(el){const f=folder(el.dataset.id);if(!confirm(`Supprimer « ${f.name} » ? Les œuvres restent dans ta bibliothèque.`))return;if(f.cover.k==="img")dropImage(f.cover.v);S.folders=S.folders.filter(x=>x!==f);save();go("folders")},
+  delfolder(el){const f=folder(el.dataset.id);if(!confirm(`Supprimer « ${f.name} » ? Les œuvres restent dans ta bibliothèque.`))return;if(f.cover.k==="img")dropImage(f.cover.v);S.folders=S.folders.filter(x=>x!==f);(S.delF=S.delF||{})[f.id]=Date.now();save();go("folders")},
   fdcov(el){syncFD();const v=el.dataset.v;FD.cover=v==="auto"?{k:"auto"}:{k:"p",v:+v};drawFolderEditor()},
   fdsave(){syncFD();const name=FD.name.trim();if(!name){toast("Donne un nom au dossier");$("#fdname").focus();return}
     let f;if(FD.id){f=folder(FD.id);if(f.cover.k==="img"&&(FD.cover.k!=="img"||FD.cover.v!==f.cover.v))dropImage(f.cover.v);Object.assign(f,{name,cat:FD.cat,desc:FD.desc.trim(),cover:FD.cover})}
@@ -1544,7 +1570,7 @@ const ACT={
   status(el){const it=ensure(curK()),v=el.dataset.v;it.status=it.status===v?null:v;if(it.status==="done"&&!it.end)it.end=today();if(it.status==="doing"&&!it.start)it.start=today();save();render()},
   rate(el){const it=ensure(curK()),v=+el.dataset.v;it.rating=it.rating===v?0:v;save();render()},
   resetcover(){const it=ensure(curK());dropImage(it.cover);it.cover=null;save();render()},
-  forget(el){const k=el.dataset.k,it=S.items[k];if(!confirm(`Retirer « ${it.t} » de ta bibliothèque ? Tes notes et ta page de lecture seront effacées.`))return;dropImage(it.cover);delete S.items[k];for(const f of S.folders)f.keys=f.keys.filter(x=>x!==k);for(const t of S.tiers){t.pool=t.pool.filter(x=>x!==k);t.rows.forEach(r=>r.keys=r.keys.filter(x=>x!==k))}save();history.back()},
+  forget(el){const k=el.dataset.k,it=S.items[k];if(!confirm(`Retirer « ${it.t} » de ta bibliothèque ? Tes notes et ta page de lecture seront effacées.`))return;dropImage(it.cover);delete S.items[k];(S.del=S.del||{})[k]=Date.now();for(const f of S.folders)f.keys=f.keys.filter(x=>x!==k);for(const t of S.tiers){t.pool=t.pool.filter(x=>x!==k);t.rows.forEach(r=>r.keys=r.keys.filter(x=>x!==k))}save();history.back()},
   retryinfo(){const k=curK();delete DETAILS[k];delete MEM["det:"+k];render()},
   retrysearch(el){delete SEARCH[el.dataset.q];render()},
   manual(el){openManual(el.dataset.q)},
@@ -1554,7 +1580,8 @@ const ACT={
   savecfg(){$$("[data-cfg]").forEach(i=>{LOCALCFG[i.dataset.cfg]=i.value.trim()});localStorage.setItem(LS+"-cfg",JSON.stringify(LOCALCFG));toast("Clés enregistrées");setTimeout(()=>location.reload(),600)},
   cfglink(){const c={};for(const k of ["TMDB_KEY","RAWG_KEY","GOOGLE_BOOKS_KEY","SUPABASE_URL","SUPABASE_ANON_KEY"])if(cfg(k))c[k]=cfg(k);const url=location.origin+location.pathname+"#cfg="+btoa(unescape(encodeURIComponent(JSON.stringify(c))));copy(url,"Lien copié, ouvre-le sur ton autre appareil")},
   copysql(){copy(SQL,"Code copié")},
-  async login(){const e=$("#em").value.trim(),p=$("#pw").value;if(!e||!p){toast("Remplis l’email et le mot de passe");return}const {error}=await SB.auth.signInWithPassword({email:e,password:p});if(error)toast(/invalid/i.test(error.message)?"Email ou mot de passe incorrect":"Connexion impossible : "+error.message);else toast("Connectée !")},
+  copyconfig(){const c={};for(const k of ["TMDB_KEY","RAWG_KEY","GOOGLE_BOOKS_KEY","SUPABASE_URL","SUPABASE_ANON_KEY"])c[k]=cfg(k);copy("window.COLLEC_CONFIG = "+JSON.stringify(c,null,2)+";\n","Contenu de config.js copié")},
+  async login(){const e=$("#em").value.trim(),p=$("#pw").value;if(!e||!p){toast("Remplis l’email et le mot de passe");return}const {error}=await SB.auth.signInWithPassword({email:e,password:p});if(error){syncMsg=/invalid/i.test(error.message)?"Email ou mot de passe incorrect.":/confirm/i.test(error.message)?"Ton email n’est pas confirmé : désactive « Confirm email » dans Supabase (Authentication), ou clique sur le lien reçu par mail.":"Connexion impossible : "+error.message;toast("Connexion impossible");render()}else{syncMsg="";toast("Connectée !")}},
   async signup(){const e=$("#em").value.trim(),p=$("#pw").value;if(!e||p.length<6){toast("Mot de passe de 6 caractères minimum");return}const {data,error}=await SB.auth.signUp({email:e,password:p});if(error)toast("Création impossible : "+error.message);else if(!data.session)toast("Confirme ton email (ou désactive « Confirm email » dans Supabase), puis connecte-toi");else toast("Compte créé, c’est synchronisé !")},
   async logout(){await SB.auth.signOut();toast("Déconnectée");render()},
   async syncnow(){await push();await pull();toast(syncState==="ok"?"Synchronisé":"La synchro a échoué");render()},
@@ -1596,7 +1623,7 @@ const ACT={
   tpick(el){const t=tier(el.dataset.id),k=el.dataset.k;if(!S.items[k]&&!W[k])return;if(tierFind(t,k)){const a=tierFind(t,k);a.splice(a.indexOf(k),1);save()}else{tierAdd(t,k);toast("Ajouté à « "+t.name+" »")}if(el.dataset.close){openTierPicker(k)}else openTierAdd(t.id,($("#tq")||{}).value||"")},
   async tonline(el){const q=$("#tq").value.trim();if(!q)return;el.textContent="Je cherche…";const ps=[aniList({q,s:["SEARCH_MATCH"]}).catch(()=>[]),gbooks(q,12).catch(()=>[])];if(cfg("TMDB_KEY"))ps.unshift(tmdb("/search/multi",{query:q}).then(j=>(j.results||[]).filter(x=>(x.media_type==="movie"||x.media_type==="tv")&&x.poster_path).map(x=>fromTmdb(x))).catch(()=>[]));tAddRes=(await Promise.all(ps)).flat().slice(0,30);openTierAdd(el.dataset.id,q)},
   trename(el){const t=tier(el.dataset.id);const n=prompt("Nouveau nom",t.name);if(n&&n.trim()){t.name=n.trim();save();render()}},
-  tdel(el){const t=tier(el.dataset.id);if(!confirm(`Supprimer la tier list « ${t.name} » ? Les œuvres restent dans ta bibliothèque.`))return;S.tiers=S.tiers.filter(x=>x!==t);save();go("tiers")},
+  tdel(el){const t=tier(el.dataset.id);if(!confirm(`Supprimer la tier list « ${t.name} » ? Les œuvres restent dans ta bibliothèque.`))return;S.tiers=S.tiers.filter(x=>x!==t);(S.delT=S.delT||{})[t.id]=Date.now();save();go("tiers")},
   taddrow(el){const t=tier(el.dataset.id);t.rows.push({id:uid(),l:"Nouvelle",c:TCOLS[t.rows.length%TCOLS.length],keys:[]});save();render()},
   trow(el){openTierRow(el.dataset.id,el.dataset.r)},
   trcol(el){const r=tier(el.dataset.id).rows.find(x=>x.id===el.dataset.r);r.l=$("#rl").value||r.l;r.c=el.dataset.v;save();openTierRow(el.dataset.id,el.dataset.r);render()},
