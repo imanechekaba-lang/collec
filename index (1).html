@@ -435,6 +435,17 @@ pre.sql{background:var(--s2);border:1px solid var(--line);border-radius:12px;pad
 .lvl{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--s3);color:var(--vi2);margin-top:6px}
 .row-h:has(h3:empty){margin-bottom:0}
 @media (max-width:420px){.bottom a{font-size:10px}}
+.ftabbar{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;margin-top:4px}
+.ftabbar::-webkit-scrollbar{display:none}
+.ftabbar button{padding:11px 14px;color:var(--mu);font-weight:700;border-bottom:2px solid transparent;white-space:nowrap;margin-bottom:-1px}
+.ftabbar button.on{color:var(--tx);border-bottom-color:var(--vi)}
+.ftabbar b{font-size:12px;background:var(--s3);border-radius:999px;padding:1px 8px;margin-left:7px;color:var(--mu)}
+.ftabbar button.on b{background:var(--vi);color:#fff}
+.grp{margin-top:6px}
+.gh{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:14px 0 8px;font:800 19px var(--disp);letter-spacing:-.01em}
+.gh b{font:700 12px var(--body);background:var(--s3);border-radius:999px;padding:2px 9px;color:var(--mu)}
+.gchev{color:var(--mu);width:14px;font-size:14px}
+.lmove button:disabled{opacity:.25;cursor:default}
 </style>
 </head>
 <body>
@@ -449,22 +460,25 @@ pre.sql{background:var(--s2);border:1px solid var(--line);border-radius:12px;pad
 <div id="modal" hidden></div>
 <div id="bar"></div>
 <div id="toast" role="status"></div>
+<script>window.COLLEC_CONFIG=window.COLLEC_CONFIG||{};</script>
+<script src="config.js"></script>
 <script>
 /* =========================================================
-   CONFIG — tu peux coller tes clés ici, ou plus simplement
-   dans la page Réglages du site.
+   CONFIG — mets plutôt tes clés dans un fichier config.js à côté
+   de ce fichier (voir Réglages > Synchro), comme ça les mises à jour
+   du site ne les effacent pas.
    ========================================================= */
 const CONFIG={
-  TMDB_KEY:"f5c77eb6841f37bedd3b6ad78c102523",          // films et séries (clé API TMDB)
-  RAWG_KEY:"f5c77eb6841f37bedd3b6ad78c102523",          // jeux vidéo (optionnel)
+  TMDB_KEY:"",          // films et séries (clé API TMDB)
+  RAWG_KEY:"",          // jeux vidéo (optionnel)
   GOOGLE_BOOKS_KEY:"",  // optionnel
-  SUPABASE_URL:"f5c77eb6841f37bedd3b6ad78c102523",      // synchro entre appareils
-  SUPABASE_ANON_KEY:"f5c77eb6841f37bedd3b6ad78c102523"
+  SUPABASE_URL:"",      // synchro entre appareils
+  SUPABASE_ANON_KEY:""
 };
 const LS="collec2";
 let LOCALCFG={};try{LOCALCFG=JSON.parse(localStorage.getItem(LS+"-cfg"))||{}}catch(e){}
 if(location.hash.startsWith("#cfg=")){try{const c=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(5)))));LOCALCFG={...LOCALCFG,...c};localStorage.setItem(LS+"-cfg",JSON.stringify(LOCALCFG))}catch(e){}history.replaceState(null,"",location.pathname+"#/reglages")}
-const cfg=k=>String(LOCALCFG[k]||CONFIG[k]||"").trim();
+const cfg=k=>String(LOCALCFG[k]||(window.COLLEC_CONFIG||{})[k]||CONFIG[k]||"").trim();
 
 /* ---------- types ---------- */
 const TYPES={
@@ -515,7 +529,7 @@ let saveTimer;
 function persist(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){toast("Mémoire du navigateur pleine")}}
 function save(){S.t=Date.now();persist();clearTimeout(saveTimer);saveTimer=setTimeout(push,1200)}
 function ensure(k){
-  if(!S.items[k]){const w=W[k];if(!w)return null;S.items[k]={k,t:w.t,y:w.y||"",c:w.c||"",type:w.type,img:w.img||"",g:w.g||"",status:null,rating:0,start:"",end:"",p1:"",p2:"",review:"",quotes:[],cover:null,added:Date.now()};if(w.cult)S.items[k].cult=1;W[k]=S.items[k]}
+  if(!S.items[k]){const w=W[k];if(!w)return null;if(S.del&&S.del[k])delete S.del[k];S.items[k]={k,t:w.t,y:w.y||"",c:w.c||"",type:w.type,img:w.img||"",g:w.g||"",status:null,rating:0,start:"",end:"",p1:"",p2:"",review:"",quotes:[],cover:null,added:Date.now()};if(w.cult)S.items[k].cult=1;W[k]=S.items[k]}
   return S.items[k];
 }
 const folder=id=>S.folders.find(f=>f.id===id);
@@ -533,20 +547,39 @@ async function initSB(){
   SB.auth.onAuthStateChange((ev,s)=>{const was=!!SESSION;SESSION=s;if(s&&!was)pull();if(!s)setSync("local");if(route()[0]==="reglages")render()});
   if(SESSION)pull();
 }
+let syncMsg="";
+function mergeStates(a,b){
+  const newer=(a.t||0)>=(b.t||0)?a:b,older=newer===a?b:a;
+  const out=JSON.parse(JSON.stringify(newer));
+  out.del={...(older.del||{}),...(newer.del||{})};out.delF={...(older.delF||{}),...(newer.delF||{})};out.delT={...(older.delT||{}),...(newer.delT||{})};
+  out.items=out.items||{};
+  for(const [k,v] of Object.entries(older.items||{}))if(!out.items[k])out.items[k]=v;
+  for(const [k,t] of Object.entries(out.del))if(out.items[k]&&(out.items[k].added||0)<t)delete out.items[k];
+  out.folders=out.folders||[];
+  for(const f of older.folders||[]){if(out.delF[f.id])continue;const g=out.folders.find(x=>x.id===f.id);if(!g)out.folders.push(f);else for(const k of f.keys)if(!g.keys.includes(k))g.keys.push(k)}
+  out.folders=out.folders.filter(f=>!out.delF[f.id]);
+  out.tiers=out.tiers||[];for(const t of older.tiers||[])if(!out.delT[t.id]&&!out.tiers.find(x=>x.id===t.id))out.tiers.push(t);
+  out.tiers=out.tiers.filter(t=>!out.delT[t.id]);
+  out.myStk=[...new Set([...(newer.myStk||[]),...(older.myStk||[])])];
+  return fix(out);
+}
 async function pull(){
   if(!SB||!SESSION)return;
   const {data,error}=await SB.from("collec").select("data").eq("user_id",SESSION.user.id).maybeSingle();
-  if(error){console.warn(error);setSync("err");return}
-  const rt=data&&data.data?data.data.t||0:0;
-  if(data&&rt>S.t){S=fix(data.data);for(const [k,i] of Object.entries(S.items))W[k]=i;persist();setSync("ok");render()}
-  else if(!data||S.t>rt)push();
-  else setSync("ok");
+  if(error){console.warn(error);syncMsg=error.message;setSync("err");if(route()[0]==="reglages")render();return}
+  if(!data||!data.data){syncMsg="";await push();return}
+  const remote=data.data;const merged=mergeStates(S,remote);
+  const changedLocal=JSON.stringify(merged.items)!==JSON.stringify(S.items)||JSON.stringify(merged.folders)!==JSON.stringify(S.folders)||JSON.stringify(merged.tiers)!==JSON.stringify(S.tiers);
+  const changedRemote=JSON.stringify(merged.items)!==JSON.stringify(remote.items||{})||JSON.stringify(merged.folders)!==JSON.stringify(remote.folders||[])||JSON.stringify(merged.tiers)!==JSON.stringify(remote.tiers||[]);
+  S=merged;for(const [k,i] of Object.entries(S.items))W[k]=i;persist();syncMsg="";
+  if(changedRemote){S.t=Date.now();persist();await push()}else setSync("ok");
+  if(changedLocal)render();
 }
 let pushing=false,pushAgain=false;
 async function push(){
   if(!SB||!SESSION)return;if(pushing){pushAgain=true;return}pushing=true;
   const {error}=await SB.from("collec").upsert({user_id:SESSION.user.id,data:S,updated_at:new Date().toISOString()});
-  setSync(error?"err":"ok");if(error)console.warn(error);
+  setSync(error?"err":"ok");syncMsg=error?error.message:"";if(error)console.warn(error);
   pushing=false;if(pushAgain){pushAgain=false;push()}
 }
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")pull()});
@@ -915,24 +948,37 @@ async function afterItem(k){
 function vFolders(){
   return `<div class="page-h"><h1>Mes dossiers</h1><button class="btn" data-act="newfolder">Nouveau dossier</button></div><div class="fgrid">${S.folders.map(f=>{const n=f.keys.filter(k=>S.items[k]).length;return `<a class="ftile" href="#/folder/${enc(f.id)}">${folderCover(f)}<b>${esc(f.name)}</b><span>${n} œuvre${n>1?"s":""}, ${catLabel(f.cat)}</span></a>`}).join("")}<button class="ftile new" data-act="newfolder"><div class="fcov">+</div><b>Créer un dossier</b></button></div>`;
 }
-let fFilter="all";
-function vFolder(id){
-  const f=folder(id);if(!f)return `<div class="page-h"><h1>Dossier introuvable</h1></div><a class="btn" href="#/folders">Voir mes dossiers</a>`;
-  let list=f.keys.filter(k=>S.items[k]).map((k,i)=>({k,i,it:S.items[k]}));
-  const total=list.length,doneN=list.filter(x=>x.it.status==="done").length;
-  if(fFilter!=="all")list=list.filter(x=>(x.it.status||"none")===fFilter);
-  const s=f.sort||"manual";
+let fFilter="all",fOpen=null;const fCollapsed=new Set();
+const GROUPS=["doing","todo","none","done","drop"];
+function groupLabel(g,cat){const T=TYPES[cat];const pl=x=>x.endsWith("s")?x:x+"s";
+  if(g==="doing")return"En cours";if(g==="todo")return T?T.todo:"À voir / à lire";if(g==="none")return"Pas encore classés";
+  if(g==="done")return T?pl(T.done.replace(/e$/,"")):"Terminés";return"Abandonnés"}
+function sortList(list,s){
   if(s==="rating")list.sort((a,b)=>(b.it.rating||0)-(a.it.rating||0));
   else if(s==="date")list.sort((a,b)=>(b.it.end||"").localeCompare(a.it.end||""));
   else if(s==="title")list.sort((a,b)=>a.it.t.localeCompare(b.it.t,"fr"));
   else if(s==="added")list.sort((a,b)=>(b.it.added||0)-(a.it.added||0));
-  const manual=s==="manual"&&fFilter==="all";
-  const fl=[["all","Tout"],["todo","À faire"],["doing","En cours"],["done","Terminé"],["drop","Abandonné"]];
+  return list;
+}
+function lrowHTML(f,x,n,manual,prevK,nextK){const it=x.it,done=it.status==="done";
+  return `<div class="lrow">${manual?`<span class="lpos">${n+1}</span>`:""}<button class="lchk ${done?"on":""}" data-act="toggledone" data-k="${esc(x.k)}" aria-label="${done?"Marquer comme pas fini":"Marquer comme fini"}">✓</button><a class="lmain" href="#/item/${enc(x.k)}">${coverHTML(it)}<div><b>${esc(it.t)}</b><span>${esc([TYPES[it.type].l,it.y].filter(Boolean).join(", "))}</span>${it.status?`<span class="st">${statLabel(it.status,it.type)}${done&&it.end?" le "+fmtDate(it.end):""}</span>`:""}</div></a>${ministars(it.rating)}${manual?`<div class="lmove"><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-o="${esc(prevK||"")}" ${prevK?"":"disabled"} aria-label="Monter">↑</button><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-o="${esc(nextK||"")}" ${nextK?"":"disabled"} aria-label="Descendre">↓</button></div>`:""}<button class="lx" data-act="rmfrom" data-f="${esc(f.id)}" data-k="${esc(x.k)}" aria-label="Retirer du dossier">×</button></div>`}
+function listHTML(f,list,manual){return `<div class="list">${list.map((x,n)=>lrowHTML(f,x,n,manual,list[n-1]&&list[n-1].k,list[n+1]&&list[n+1].k)).join("")}</div>`}
+function vFolder(id){
+  const f=folder(id);if(!f)return `<div class="page-h"><h1>Dossier introuvable</h1></div><a class="btn" href="#/folders">Voir mes dossiers</a>`;
+  if(fOpen!==id){fOpen=id;fFilter="all"}
+  const all=f.keys.filter(k=>S.items[k]).map((k,i)=>({k,i,it:S.items[k]}));
+  const by={};GROUPS.forEach(g=>by[g]=all.filter(x=>(x.it.status||"none")===g));
+  const total=all.length,doneN=by.done.length,s=f.sort||"manual",manual=s==="manual";
+  const tabs=[["all","Tout",total],...GROUPS.map(g=>[g,groupLabel(g,f.cat),by[g].length]).filter(([g,l,n])=>n||g==="doing"||g==="todo"||g==="done")];
+  if(!tabs.find(t=>t[0]===fFilter))fFilter="all";
+  let body;
+  if(!total)body=`<div class="empty">Dossier vide. Cherche une œuvre ou appuie longuement sur une couverture pour l’ajouter ici.</div>`;
+  else if(fFilter==="all")body=GROUPS.filter(g=>by[g].length).map(g=>{const c=fCollapsed.has(f.id+g);return `<section class="grp"><button class="gh" data-act="fcol" data-g="${f.id+g}" aria-expanded="${!c}"><span class="gchev">${c?"▸":"▾"}</span>${esc(groupLabel(g,f.cat))}<b>${by[g].length}</b></button>${c?"":listHTML(f,sortList(by[g],s),manual)}</section>`}).join("");
+  else body=by[fFilter].length?listHTML(f,sortList(by[fFilter],s),manual):`<div class="empty">Rien dans « ${esc(groupLabel(fFilter,f.cat))} » pour l’instant.</div>`;
   return `<div class="fhead">${folderCover(f)}<div><h1>${esc(f.name)}</h1>${f.desc?`<p>${esc(f.desc)}</p>`:""}<p class="fine">${total} œuvre${total>1?"s":""}, dont ${doneN} terminée${doneN>1?"s":""}</p><div class="acts"><button class="btn sm ghost" data-act="editfolder" data-id="${esc(f.id)}">Modifier</button>${f.id!=="fav"&&f.id!=="wish"?`<button class="btn sm danger" data-act="delfolder" data-id="${esc(f.id)}">Supprimer</button>`:""}</div></div></div>
-  <div class="tools"><div class="chips">${fl.map(([v,l])=>`<button class="chip ${fFilter===v?"on":""}" data-act="ffilter" data-v="${v}">${l}</button>`).join("")}</div>
-  <select data-sort="${esc(f.id)}" aria-label="Trier">${[["manual","Mon ordre"],["rating","Mieux notés"],["date","Terminés récemment"],["added","Ajoutés récemment"],["title","Titre A-Z"]].map(([v,l])=>`<option value="${v}" ${s===v?"selected":""}>${l}</option>`).join("")}</select></div>
-  ${list.length?`<div class="list">${list.map((x,n)=>{const it=x.it,done=it.status==="done";return `<div class="lrow">${manual?`<span class="lpos">${n+1}</span>`:""}<button class="lchk ${done?"on":""}" data-act="toggledone" data-k="${esc(x.k)}" aria-label="${done?"Marquer comme pas fini":"Marquer comme fini"}">✓</button><a class="lmain" href="#/item/${enc(x.k)}">${coverHTML(it)}<div><b>${esc(it.t)}</b><span>${esc([TYPES[it.type].l,it.y].filter(Boolean).join(", "))}</span>${it.status?`<span class="st">${statLabel(it.status,it.type)}${done&&it.end?" le "+fmtDate(it.end):""}</span>`:""}</div></a>${ministars(it.rating)}${manual?`<div class="lmove"><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-d="-1" aria-label="Monter">↑</button><button data-act="mv" data-f="${esc(f.id)}" data-k="${esc(x.k)}" data-d="1" aria-label="Descendre">↓</button></div>`:""}<button class="lx" data-act="rmfrom" data-f="${esc(f.id)}" data-k="${esc(x.k)}" aria-label="Retirer du dossier">×</button></div>`}).join("")}</div>`
-  :`<div class="empty">${total?"Rien dans ce filtre.":"Dossier vide. Cherche une œuvre ou appuie longuement sur une couverture pour l’ajouter ici."}</div>`}`;
+  <div class="ftabbar" role="tablist">${tabs.map(([v,l,n])=>`<button role="tab" aria-selected="${fFilter===v}" class="${fFilter===v?"on":""}" data-act="ffilter" data-v="${v}">${esc(l)}<b>${n}</b></button>`).join("")}</div>
+  <div class="tools" style="justify-content:flex-end"><select data-sort="${esc(f.id)}" aria-label="Trier">${[["manual","Mon ordre"],["rating","Mieux notés"],["date","Terminés récemment"],["added","Ajoutés récemment"],["title","Titre A-Z"]].map(([v,l])=>`<option value="${v}" ${s===v?"selected":""}>${l}</option>`).join("")}</select></div>
+  ${body}`;
 }
 
 /* ---------- pour toi ---------- */
@@ -1002,8 +1048,12 @@ function vSettings(){
   else if(!SB)acc=`<p class="fine">Les codes Supabase ont l’air faux, vérifie-les puis recharge la page.</p>`;
   else if(!SESSION)acc=`<p>Connecte-toi pour retrouver tes données sur tous tes appareils.</p><div class="form"><label>Email<input class="inp" id="em" type="email" autocomplete="email"></label><label>Mot de passe<input class="inp" id="pw" type="password" autocomplete="current-password"></label></div><div class="mrow" style="justify-content:flex-start"><button class="btn" data-act="login">Me connecter</button><button class="btn ghost" data-act="signup">Créer mon compte</button></div>`;
   else acc=`<p>Connectée avec <b>${esc(SESSION.user.email)}</b>. ${syncState==="ok"?"Tout est synchronisé.":syncState==="err"?"Petit souci de synchro, réessaie.":""}</p><div class="mrow" style="justify-content:flex-start"><button class="btn ghost" data-act="syncnow">Synchroniser maintenant</button><button class="btn ghost" data-act="logout">Me déconnecter</button></div>`;
+  const st=!cfg("SUPABASE_URL")||!cfg("SUPABASE_ANON_KEY")?["err","Pas branchée : cet appareil ne connaît pas tes codes Supabase."]:!SB?["err","Les codes Supabase sont faux ou incomplets."]:!SESSION?["err","Pas connectée sur cet appareil."]:syncState==="err"?["err","Connectée, mais la synchro a échoué."]:["ok","Synchro active sur cet appareil."];
   return `<div class="page-h"><h1>Réglages</h1></div>
-  <section class="panel"><h2>Mon compte</h2>${acc}</section>
+  <section class="panel"><h2>Mon compte</h2><p style="color:${st[0]==="ok"?"var(--ok)":"#ff8fb5"};font-weight:700;margin:6px 0 12px">● ${st[1]}</p>${syncMsg?`<p class="fine" style="color:#ff8fb5">${esc(syncMsg)}</p>`:""}${acc}</section>
+  <section class="panel"><h2>Brancher tous mes appareils</h2><p>Sur iPhone et iPad, l’icône de l’écran d’accueil a sa propre mémoire. Le plus simple : mettre tes codes dans un fichier <b>config.js</b> sur GitHub, une seule fois. Tous tes appareils les auront, et les mises à jour du site ne les effaceront pas.</p>
+  <ol class="setup"><li>Sur l’appareil où tes clés sont déjà remplies (ton Mac), clique sur le bouton ci-dessous.</li><li>Sur GitHub, dans ton repo <b>collec</b> : <b>Add file</b>, puis <b>Create new file</b>. Nom du fichier : <b>config.js</b>. Colle le contenu, puis <b>Commit changes</b>.</li><li>Sur chaque appareil : ferme l’appli, rouvre-la, et connecte-toi ici avec le même compte.</li></ol>
+  <button class="btn sm" data-act="copyconfig">Copier le contenu de config.js</button>${window.COLLEC_CONFIG&&window.COLLEC_CONFIG.SUPABASE_URL?`<p class="fine" style="color:var(--ok);margin-top:10px">✓ Le fichier config.js est bien en place.</p>`:""}</section>
   <section class="panel"><h2>Mes clés</h2><p>Elles restent sur cet appareil. Pour ton autre appareil, utilise le lien de configuration plus bas.</p><div class="form">
   ${keyIn("TMDB_KEY","Clé TMDB (films et séries)","Colle ta clé d’API ici")}
   ${keyIn("RAWG_KEY","Clé RAWG (jeux vidéo, optionnel)","Optionnel")}
@@ -1505,7 +1555,7 @@ const ACT={
   pickfolder(el){openPicker(el.dataset.k)},
   togglein(el){const added=toggleIn(el.dataset.f,el.dataset.k);toast(added?"Rangé dans le dossier":"Retiré du dossier");openPicker(el.dataset.k)},
   newfolder(el){openFolderEditor(null,el.dataset.k,el.dataset.t)},editfolder(el){openFolderEditor(el.dataset.id)},
-  delfolder(el){const f=folder(el.dataset.id);if(!confirm(`Supprimer « ${f.name} » ? Les œuvres restent dans ta bibliothèque.`))return;if(f.cover.k==="img")dropImage(f.cover.v);S.folders=S.folders.filter(x=>x!==f);save();go("folders")},
+  delfolder(el){const f=folder(el.dataset.id);if(!confirm(`Supprimer « ${f.name} » ? Les œuvres restent dans ta bibliothèque.`))return;if(f.cover.k==="img")dropImage(f.cover.v);S.folders=S.folders.filter(x=>x!==f);(S.delF=S.delF||{})[f.id]=Date.now();save();go("folders")},
   fdcov(el){syncFD();const v=el.dataset.v;FD.cover=v==="auto"?{k:"auto"}:{k:"p",v:+v};drawFolderEditor()},
   fdsave(){syncFD();const name=FD.name.trim();if(!name){toast("Donne un nom au dossier");$("#fdname").focus();return}
     let f;if(FD.id){f=folder(FD.id);if(f.cover.k==="img"&&(FD.cover.k!=="img"||FD.cover.v!==f.cover.v))dropImage(f.cover.v);Object.assign(f,{name,cat:FD.cat,desc:FD.desc.trim(),cover:FD.cover})}
@@ -1514,12 +1564,13 @@ const ACT={
     save();closeModal();toast(FD.id?"Dossier modifié":"Dossier créé");if(!FD.id&&!FD.addKey)go("folder",f.id);else render()},
   ffilter(el){fFilter=el.dataset.v;render()},
   toggledone(el){const it=ensure(el.dataset.k);if(it.status==="done")it.status="todo";else{it.status="done";if(!it.end)it.end=today()}save();render()},
-  mv(el){const f=folder(el.dataset.f),k=el.dataset.k,live=f.keys.filter(x=>S.items[x]);const i=live.indexOf(k),j=i+(+el.dataset.d);if(j<0||j>=live.length)return;[live[i],live[j]]=[live[j],live[i]];f.keys=live;save();render()},
+  mv(el){const f=folder(el.dataset.f),k=el.dataset.k,o=el.dataset.o;if(!o)return;const i=f.keys.indexOf(k),j=f.keys.indexOf(o);if(i<0||j<0)return;[f.keys[i],f.keys[j]]=[f.keys[j],f.keys[i]];save();render()},
+  fcol(el){const g=el.dataset.g;fCollapsed.has(g)?fCollapsed.delete(g):fCollapsed.add(g);render()},
   rmfrom(el){const f=folder(el.dataset.f);f.keys=f.keys.filter(x=>x!==el.dataset.k);save();render()},
   status(el){const it=ensure(curK()),v=el.dataset.v;it.status=it.status===v?null:v;if(it.status==="done"&&!it.end)it.end=today();if(it.status==="doing"&&!it.start)it.start=today();save();render()},
   rate(el){const it=ensure(curK()),v=+el.dataset.v;it.rating=it.rating===v?0:v;save();render()},
   resetcover(){const it=ensure(curK());dropImage(it.cover);it.cover=null;save();render()},
-  forget(el){const k=el.dataset.k,it=S.items[k];if(!confirm(`Retirer « ${it.t} » de ta bibliothèque ? Tes notes et ta page de lecture seront effacées.`))return;dropImage(it.cover);delete S.items[k];for(const f of S.folders)f.keys=f.keys.filter(x=>x!==k);for(const t of S.tiers){t.pool=t.pool.filter(x=>x!==k);t.rows.forEach(r=>r.keys=r.keys.filter(x=>x!==k))}save();history.back()},
+  forget(el){const k=el.dataset.k,it=S.items[k];if(!confirm(`Retirer « ${it.t} » de ta bibliothèque ? Tes notes et ta page de lecture seront effacées.`))return;dropImage(it.cover);delete S.items[k];(S.del=S.del||{})[k]=Date.now();for(const f of S.folders)f.keys=f.keys.filter(x=>x!==k);for(const t of S.tiers){t.pool=t.pool.filter(x=>x!==k);t.rows.forEach(r=>r.keys=r.keys.filter(x=>x!==k))}save();history.back()},
   retryinfo(){const k=curK();delete DETAILS[k];delete MEM["det:"+k];render()},
   retrysearch(el){delete SEARCH[el.dataset.q];render()},
   manual(el){openManual(el.dataset.q)},
@@ -1529,7 +1580,8 @@ const ACT={
   savecfg(){$$("[data-cfg]").forEach(i=>{LOCALCFG[i.dataset.cfg]=i.value.trim()});localStorage.setItem(LS+"-cfg",JSON.stringify(LOCALCFG));toast("Clés enregistrées");setTimeout(()=>location.reload(),600)},
   cfglink(){const c={};for(const k of ["TMDB_KEY","RAWG_KEY","GOOGLE_BOOKS_KEY","SUPABASE_URL","SUPABASE_ANON_KEY"])if(cfg(k))c[k]=cfg(k);const url=location.origin+location.pathname+"#cfg="+btoa(unescape(encodeURIComponent(JSON.stringify(c))));copy(url,"Lien copié, ouvre-le sur ton autre appareil")},
   copysql(){copy(SQL,"Code copié")},
-  async login(){const e=$("#em").value.trim(),p=$("#pw").value;if(!e||!p){toast("Remplis l’email et le mot de passe");return}const {error}=await SB.auth.signInWithPassword({email:e,password:p});if(error)toast(/invalid/i.test(error.message)?"Email ou mot de passe incorrect":"Connexion impossible : "+error.message);else toast("Connectée !")},
+  copyconfig(){const c={};for(const k of ["TMDB_KEY","RAWG_KEY","GOOGLE_BOOKS_KEY","SUPABASE_URL","SUPABASE_ANON_KEY"])c[k]=cfg(k);copy("window.COLLEC_CONFIG = "+JSON.stringify(c,null,2)+";\n","Contenu de config.js copié")},
+  async login(){const e=$("#em").value.trim(),p=$("#pw").value;if(!e||!p){toast("Remplis l’email et le mot de passe");return}const {error}=await SB.auth.signInWithPassword({email:e,password:p});if(error){syncMsg=/invalid/i.test(error.message)?"Email ou mot de passe incorrect.":/confirm/i.test(error.message)?"Ton email n’est pas confirmé : désactive « Confirm email » dans Supabase (Authentication), ou clique sur le lien reçu par mail.":"Connexion impossible : "+error.message;toast("Connexion impossible");render()}else{syncMsg="";toast("Connectée !")}},
   async signup(){const e=$("#em").value.trim(),p=$("#pw").value;if(!e||p.length<6){toast("Mot de passe de 6 caractères minimum");return}const {data,error}=await SB.auth.signUp({email:e,password:p});if(error)toast("Création impossible : "+error.message);else if(!data.session)toast("Confirme ton email (ou désactive « Confirm email » dans Supabase), puis connecte-toi");else toast("Compte créé, c’est synchronisé !")},
   async logout(){await SB.auth.signOut();toast("Déconnectée");render()},
   async syncnow(){await push();await pull();toast(syncState==="ok"?"Synchronisé":"La synchro a échoué");render()},
@@ -1571,7 +1623,7 @@ const ACT={
   tpick(el){const t=tier(el.dataset.id),k=el.dataset.k;if(!S.items[k]&&!W[k])return;if(tierFind(t,k)){const a=tierFind(t,k);a.splice(a.indexOf(k),1);save()}else{tierAdd(t,k);toast("Ajouté à « "+t.name+" »")}if(el.dataset.close){openTierPicker(k)}else openTierAdd(t.id,($("#tq")||{}).value||"")},
   async tonline(el){const q=$("#tq").value.trim();if(!q)return;el.textContent="Je cherche…";const ps=[aniList({q,s:["SEARCH_MATCH"]}).catch(()=>[]),gbooks(q,12).catch(()=>[])];if(cfg("TMDB_KEY"))ps.unshift(tmdb("/search/multi",{query:q}).then(j=>(j.results||[]).filter(x=>(x.media_type==="movie"||x.media_type==="tv")&&x.poster_path).map(x=>fromTmdb(x))).catch(()=>[]));tAddRes=(await Promise.all(ps)).flat().slice(0,30);openTierAdd(el.dataset.id,q)},
   trename(el){const t=tier(el.dataset.id);const n=prompt("Nouveau nom",t.name);if(n&&n.trim()){t.name=n.trim();save();render()}},
-  tdel(el){const t=tier(el.dataset.id);if(!confirm(`Supprimer la tier list « ${t.name} » ? Les œuvres restent dans ta bibliothèque.`))return;S.tiers=S.tiers.filter(x=>x!==t);save();go("tiers")},
+  tdel(el){const t=tier(el.dataset.id);if(!confirm(`Supprimer la tier list « ${t.name} » ? Les œuvres restent dans ta bibliothèque.`))return;S.tiers=S.tiers.filter(x=>x!==t);(S.delT=S.delT||{})[t.id]=Date.now();save();go("tiers")},
   taddrow(el){const t=tier(el.dataset.id);t.rows.push({id:uid(),l:"Nouvelle",c:TCOLS[t.rows.length%TCOLS.length],keys:[]});save();render()},
   trow(el){openTierRow(el.dataset.id,el.dataset.r)},
   trcol(el){const r=tier(el.dataset.id).rows.find(x=>x.id===el.dataset.r);r.l=$("#rl").value||r.l;r.c=el.dataset.v;save();openTierRow(el.dataset.id,el.dataset.r);render()},
